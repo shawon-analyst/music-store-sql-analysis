@@ -54,53 +54,147 @@ The database models a digital music store: a catalog of artists, albums, tracks 
 ## Repository Structure
  
 ```text
-Music-Playlist-SQL-Project/
-├── README.md
-├── data/
-│   ├── raw/
-│   │   ├── Music_Store_database.sql             # original dump (reference only)
-│   │   ├── Music_Store_Query.sql                # original analysis file (superseded)
-│   │   ├── Music Store- Create Tables Query.txt # first-draft DDL (superseded)
-│   │   └── *.csv                                # 11 source tables
-│   └── processed/                               # cleaned data and exported results
+music-store-sql-analysis/
+├── data/                        # 11 source tables (UTF-8 CSV)
+│   ├── album.csv
+│   ├── artist.csv
+│   ├── customer.csv
+│   ├── employee.csv
+│   ├── genre.csv
+│   ├── invoice.csv
+│   ├── invoice_line.csv
+│   ├── media_type.csv
+│   ├── playlist.csv
+│   ├── playlist_track.csv
+│   └── track.csv
+├── docs/
+│   └── schema_diagram.png       # entity relationship diagram
 ├── sql/
-│   ├── 01_create_tables.sql                     # runnable schema: keys, FKs, indexes
-│   └── 02_analysis_queries.sql                  # the 11 analysis queries
+│   ├── 01_create_tables.sql     # runnable schema: keys, FKs, indexes
+│   └── 02_analysis_queries.sql  # the 11 analysis queries
+├── LICENSE
+└── README.md
 ```
- 
-> [!NOTE]
-> `data/raw/Music_Store_database.sql` is the original dump and is **not intended to be executed directly**. It mixes `CREATE DATABASE` with table definitions, uses `billing_postal` where the CSV has `billing_postal_code`, and defines no foreign keys. Use `sql/01_create_tables.sql` instead.
->
-> Likewise, `data/raw/Music_Store_Query.sql` has been superseded by the corrected and documented `sql/02_analysis_queries.sql`.
  
 ---
  
 ## Data Model
  
+The schema contains 11 tables organised into three functional areas. `track` is the central table: it links the music catalog, the playlists and the sales data.
+ 
+| Area               | Tables                                            | Purpose                                       |
+| ------------------ | ------------------------------------------------- | --------------------------------------------- |
+| **Catalog**        | `artist`, `album`, `track`, `genre`, `media_type` | What the store sells                          |
+| **Playlists**      | `playlist`, `playlist_track`                      | Curated collections of tracks                 |
+| **Sales & People** | `customer`, `invoice`, `invoice_line`, `employee` | Who buys, what they buy and who supports them |
+ 
+### Entity Relationship Diagram
+ 
+Primary keys (`PK`) and foreign keys (`FK`) are shown for every table, along with the columns the analysis queries rely on most.
+ 
 ```mermaid
 erDiagram
-    ARTIST ||--o{ ALBUM : releases
-    ALBUM ||--o{ TRACK : contains
-    GENRE ||--o{ TRACK : classifies
-    MEDIA_TYPE ||--o{ TRACK : formats
-    PLAYLIST ||--o{ PLAYLIST_TRACK : includes
-    TRACK ||--o{ PLAYLIST_TRACK : appears_in
-    EMPLOYEE ||--o{ CUSTOMER : supports
-    EMPLOYEE ||--o{ EMPLOYEE : manages
-    CUSTOMER ||--o{ INVOICE : places
-    INVOICE ||--o{ INVOICE_LINE : has
-    TRACK ||--o{ INVOICE_LINE : sold_as
+    ARTIST ||--o{ ALBUM : "releases"
+    ALBUM ||--o{ TRACK : "contains"
+    GENRE ||--o{ TRACK : "classifies"
+    MEDIA_TYPE ||--o{ TRACK : "formats"
+    PLAYLIST ||--o{ PLAYLIST_TRACK : "includes"
+    TRACK ||--o{ PLAYLIST_TRACK : "appears in"
+    TRACK ||--o{ INVOICE_LINE : "is sold as"
+    INVOICE ||--o{ INVOICE_LINE : "itemises"
+    CUSTOMER ||--o{ INVOICE : "places"
+    EMPLOYEE ||--o{ CUSTOMER : "supports"
+    EMPLOYEE |o--o{ EMPLOYEE : "manages"
+ 
+    ARTIST {
+        int artist_id PK
+        text name
+    }
+    ALBUM {
+        int album_id PK
+        text title
+        int artist_id FK
+    }
+    GENRE {
+        int genre_id PK
+        text name
+    }
+    MEDIA_TYPE {
+        int media_type_id PK
+        text name
+    }
+    TRACK {
+        int track_id PK
+        text name
+        int album_id FK
+        int genre_id FK
+        int media_type_id FK
+        text composer
+        int milliseconds
+        numeric unit_price
+    }
+    PLAYLIST {
+        int playlist_id PK
+        text name
+    }
+    PLAYLIST_TRACK {
+        int playlist_id PK, FK
+        int track_id PK, FK
+    }
+    EMPLOYEE {
+        int employee_id PK
+        text first_name
+        text last_name
+        text title
+        text levels
+        int reports_to FK
+        date hire_date
+    }
+    CUSTOMER {
+        int customer_id PK
+        text first_name
+        text last_name
+        text city
+        text country
+        text email
+        int support_rep_id FK
+    }
+    INVOICE {
+        int invoice_id PK
+        int customer_id FK
+        date invoice_date
+        text billing_country
+        numeric total
+    }
+    INVOICE_LINE {
+        int invoice_line_id PK
+        int invoice_id FK
+        int track_id FK
+        numeric unit_price
+        int quantity
+    }
 ```
  
-**Key relationships**
+### Relationship Reference
  
-- `artist` 1 → * `album` 1 → * `track`
-- `genre` 1 → * `track` and `media_type` 1 → * `track`
-- `playlist` * ↔ * `track` through `playlist_track`
-- `employee` 1 → * `customer` via `support_rep_id`; `employee.reports_to` is a self-reference to the manager
-- `customer` 1 → * `invoice` 1 → * `invoice_line` * → 1 `track`
-`employee.levels` (L1–L7) stores the seniority band. The ERD omits it, but the seniority question depends on it, so it is kept in the schema.
+| Parent table | Child table    | Foreign key               | Cardinality              |
+| ------------ | -------------- | ------------------------- | ------------------------ |
+| `artist`     | `album`        | `album.artist_id`         | One-to-many              |
+| `album`      | `track`        | `track.album_id`          | One-to-many              |
+| `genre`      | `track`        | `track.genre_id`          | One-to-many              |
+| `media_type` | `track`        | `track.media_type_id`     | One-to-many              |
+| `playlist`   | `track`        | via `playlist_track`      | Many-to-many             |
+| `employee`   | `customer`     | `customer.support_rep_id` | One-to-many              |
+| `employee`   | `employee`     | `employee.reports_to`     | Self-reference (manager) |
+| `customer`   | `invoice`      | `invoice.customer_id`     | One-to-many              |
+| `invoice`    | `invoice_line` | `invoice_line.invoice_id` | One-to-many              |
+| `track`      | `invoice_line` | `invoice_line.track_id`   | One-to-many              |
  
+### Design Notes
+ 
+- **Sales path:** `customer` → `invoice` → `invoice_line` → `track` → `album` → `artist` is the join chain behind most revenue questions, such as spend per artist or per genre.
+- **Seniority band:** `employee.levels` (L1–L7) stores the seniority band. It is kept in the schema because the seniority question depends on it.
+- **Bridge table:** `playlist_track` uses a composite primary key on `(playlist_id, track_id)` to resolve the many-to-many relationship between playlists and tracks.
 ---
  
 ## Getting Started
@@ -129,17 +223,17 @@ SET client_encoding = 'UTF8';
 SET datestyle = 'DMY';          -- employee dates are DD-MM-YYYY
  
 BEGIN;
-\copy artist         (artist_id, name) FROM 'data/raw/artist.csv' WITH (FORMAT csv, HEADER true);
-\copy album          (album_id, title, artist_id) FROM 'data/raw/album.csv' WITH (FORMAT csv, HEADER true);
-\copy genre          (genre_id, name) FROM 'data/raw/genre.csv' WITH (FORMAT csv, HEADER true);
-\copy media_type     (media_type_id, name) FROM 'data/raw/media_type.csv' WITH (FORMAT csv, HEADER true);
-\copy track          (track_id, name, album_id, media_type_id, genre_id, composer, milliseconds, bytes, unit_price) FROM 'data/raw/track.csv' WITH (FORMAT csv, HEADER true);
-\copy playlist       (playlist_id, name) FROM 'data/raw/playlist.csv' WITH (FORMAT csv, HEADER true);
-\copy playlist_track (playlist_id, track_id) FROM 'data/raw/playlist_track.csv' WITH (FORMAT csv, HEADER true);
-\copy employee       (employee_id, last_name, first_name, title, reports_to, levels, birthdate, hire_date, address, city, state, country, postal_code, phone, fax, email) FROM 'data/raw/employee.csv' WITH (FORMAT csv, HEADER true);
-\copy customer       (customer_id, first_name, last_name, company, address, city, state, country, postal_code, phone, fax, email, support_rep_id) FROM 'data/raw/customer.csv' WITH (FORMAT csv, HEADER true);
-\copy invoice        (invoice_id, customer_id, invoice_date, billing_address, billing_city, billing_state, billing_country, billing_postal_code, total) FROM 'data/raw/invoice.csv' WITH (FORMAT csv, HEADER true);
-\copy invoice_line   (invoice_line_id, invoice_id, track_id, unit_price, quantity) FROM 'data/raw/invoice_line.csv' WITH (FORMAT csv, HEADER true);
+\copy artist         (artist_id, name) FROM 'data/artist.csv' WITH (FORMAT csv, HEADER true);
+\copy album          (album_id, title, artist_id) FROM 'data/album.csv' WITH (FORMAT csv, HEADER true);
+\copy genre          (genre_id, name) FROM 'data/genre.csv' WITH (FORMAT csv, HEADER true);
+\copy media_type     (media_type_id, name) FROM 'data/media_type.csv' WITH (FORMAT csv, HEADER true);
+\copy track          (track_id, name, album_id, media_type_id, genre_id, composer, milliseconds, bytes, unit_price) FROM 'data/track.csv' WITH (FORMAT csv, HEADER true);
+\copy playlist       (playlist_id, name) FROM 'data/playlist.csv' WITH (FORMAT csv, HEADER true);
+\copy playlist_track (playlist_id, track_id) FROM 'data/playlist_track.csv' WITH (FORMAT csv, HEADER true);
+\copy employee       (employee_id, last_name, first_name, title, reports_to, levels, birthdate, hire_date, address, city, state, country, postal_code, phone, fax, email) FROM 'data/employee.csv' WITH (FORMAT csv, HEADER true);
+\copy customer       (customer_id, first_name, last_name, company, address, city, state, country, postal_code, phone, fax, email, support_rep_id) FROM 'data/customer.csv' WITH (FORMAT csv, HEADER true);
+\copy invoice        (invoice_id, customer_id, invoice_date, billing_address, billing_city, billing_state, billing_country, billing_postal_code, total) FROM 'data/invoice.csv' WITH (FORMAT csv, HEADER true);
+\copy invoice_line   (invoice_line_id, invoice_id, track_id, unit_price, quantity) FROM 'data/invoice_line.csv' WITH (FORMAT csv, HEADER true);
 COMMIT;
 ```
  
