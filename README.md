@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Music Store SQL Analysis
 
 A SQL portfolio project built on a music store database (the Chinook sample
@@ -198,6 +197,3 @@ Data observations:
 - Export the result sets of the analysis queries to `data/processed/`.
 - Add a `make`/PowerShell script that creates the database, loads the data and
   runs the queries in one step.
-=======
-# music-store-sql-analysis
->>>>>>> 035c741a53d4aa08939069f4d3da013aca54f58e
